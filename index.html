@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Migraine Log</title>
+<meta name="description" content="One-tap migraine tracker. Works offline, data stays on your device.">
+
+<link rel="manifest" href="./manifest.webmanifest">
+<meta name="theme-color" content="#f4f3f8" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#17151f" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Migraine">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+<link rel="icon" href="./icons/favicon-32.png" sizes="32x32">
+
+<style>
+  :root {
+    color-scheme: light dark;   /* native controls (date picker, scrollbars) follow the theme */
+    --bg: #f4f3f8;
+    --surface: #ffffff;
+    --surface-2: #eceaf3;
+    --text: #1d1b26;
+    --muted: #6b6779;
+    --border: #dedae9;
+    --accent: #5b46c4;
+    --accent-text: #ffffff;
+    --danger: #b3261e;
+    --radius: 14px;
+    --shadow: 0 1px 2px rgba(29, 27, 38, .06), 0 4px 14px rgba(29, 27, 38, .05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #17151f;
+      --surface: #211e2c;
+      --surface-2: #2b2739;
+      --text: #ece9f4;
+      --muted: #9b95ad;
+      --border: #363145;
+      --accent: #7c66e8;
+      --accent-text: #120f1a;
+      --danger: #f2b8b5;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 4px 14px rgba(0, 0, 0, .25);
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .wrap {
+    max-width: 34rem;
+    margin: 0 auto;
+    padding: 20px 16px calc(28px + env(safe-area-inset-bottom));
+    padding-left: calc(16px + env(safe-area-inset-left));
+    padding-right: calc(16px + env(safe-area-inset-right));
+    padding-top: calc(20px + env(safe-area-inset-top));
+  }
+
+  h1 { font-size: 1.15rem; margin: 0; letter-spacing: -.01em; }
+  h2 { font-size: .8rem; margin: 0; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; font-weight: 600; }
+  header { margin-bottom: 20px; }
+  #summary { margin: 4px 0 0; color: var(--muted); font-size: .9rem; }
+
+  button, input, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; border: 0; background: none; }
+
+  /* The whole point of the app. */
+  #logBtn {
+    display: block;
+    width: 100%;
+    min-height: 136px;
+    border-radius: 20px;
+    background: var(--accent);
+    color: var(--accent-text);
+    font-size: 1.3rem;
+    font-weight: 650;
+    letter-spacing: -.01em;
+    box-shadow: var(--shadow);
+    transition: transform .08s ease, filter .15s ease;
+    touch-action: manipulation;
+  }
+  #logBtn:active { transform: scale(.975); filter: brightness(1.08); }
+  #logBtn small { display: block; font-size: .8rem; font-weight: 500; opacity: .75; margin-top: 6px; letter-spacing: 0; }
+
+  #flash {
+    margin: 12px 0 0;
+    min-height: 1.4rem;
+    font-size: .9rem;
+    color: var(--muted);
+    display: flex; align-items: center; gap: 10px; justify-content: center;
+  }
+  #flash button { color: var(--accent); font-weight: 600; text-decoration: underline; padding: 4px; }
+  #flash:empty { display: none; }
+
+  .bar { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 30px 0 10px; }
+  .bar span { font-size: .85rem; color: var(--muted); }
+
+  ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+
+  .entry {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .entry-head {
+    display: flex; align-items: center; gap: 10px;
+    width: 100%;
+    padding: 13px 14px;
+    text-align: left;
+  }
+  .entry-when { font-weight: 600; font-size: .95rem; white-space: nowrap; }
+  .entry-meta {
+    color: var(--muted); font-size: .85rem;
+    flex: 1; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .chev { color: var(--muted); flex: none; transition: transform .15s ease; }
+  .entry[open] .chev, .entry.open .chev { transform: rotate(90deg); }
+
+  .entry-body { padding: 2px 14px 14px; border-top: 1px solid var(--border); margin-top: -1px; }
+  .field { margin-top: 14px; }
+  .field > label, .field > .lbl {
+    display: block; font-size: .78rem; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .06em; font-weight: 600; margin-bottom: 7px;
+  }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip {
+    padding: 9px 14px;
+    border-radius: 999px;
+    background: var(--surface-2);
+    border: 1px solid transparent;
+    font-size: .9rem;
+    touch-action: manipulation;
+  }
+  .chip[aria-pressed="true"] { background: var(--accent); color: var(--accent-text); font-weight: 600; }
+
+  textarea, input[type="datetime-local"] {
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    resize: vertical;
+  }
+  textarea { min-height: 62px; }
+
+  .del { margin-top: 16px; color: var(--danger); font-size: .88rem; font-weight: 600; padding: 6px 0; }
+
+  #empty { color: var(--muted); font-size: .92rem; text-align: center; padding: 26px 8px; margin: 0; }
+
+  footer { margin-top: 34px; border-top: 1px solid var(--border); padding-top: 16px; }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .actions button, .actions label {
+    padding: 9px 13px;
+    border-radius: 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    font-size: .85rem;
+    cursor: pointer;
+  }
+  .note { color: var(--muted); font-size: .78rem; margin: 14px 0 0; }
+  #warn {
+    background: var(--surface); border: 1px solid var(--danger); color: var(--danger);
+    border-radius: var(--radius); padding: 11px 13px; font-size: .85rem; margin-bottom: 16px;
+  }
+  [hidden] { display: none !important; }
+  .sr {
+    position: absolute; width: 1px; height: 1px; overflow: hidden;
+    clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+  }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <p id="warn" hidden>This browser is blocking local storage, so entries can’t be saved. Private browsing mode is the usual cause.</p>
+
+  <header>
+    <h1>Migraine log</h1>
+    <p id="summary">&nbsp;</p>
+  </header>
+
+  <main>
+    <button id="logBtn" type="button">
+      I have a migraine
+      <small>Records the time right away — details optional</small>
+    </button>
+    <p id="flash" role="status" aria-live="polite"></p>
+
+    <section>
+      <div class="bar">
+        <h2>History</h2>
+        <span id="count"></span>
+      </div>
+      <ol id="list"></ol>
+      <p id="empty">Nothing logged yet. Tap the button when it starts.</p>
+    </section>
+  </main>
+
+  <footer>
+    <div class="actions">
+      <button type="button" id="csvBtn">Export CSV</button>
+      <button type="button" id="jsonBtn">Export JSON</button>
+      <button type="button" id="copyBtn">Copy JSON</button>
+      <label for="importFile">Import JSON</label>
+      <input type="file" id="importFile" accept="application/json,.json" class="sr">
+    </div>
+    <p class="note">
+      Entries live only in this browser on this device. Nothing is uploaded anywhere.
+      Export now and then so a cleared browser doesn’t take the history with it.
+    </p>
+  </footer>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var KEY = 'migraine-log-v1';
+  var MEDS = [
+    { id: 'acetaminophen', label: 'Acetaminophen' },
+    { id: 'ibuprofen',     label: 'Ibuprofen' },
+    { id: 'none',          label: 'Nothing' }
+  ];
+
+  var entries = [];
+  var open = {};            // id -> true, which cards are expanded
+  var storageOK = true;
+  var flashTimer = null;
+  var saveTimer = null;
+
+  var $ = function (id) { return document.getElementById(id); };
+  var list = $('list');
+
+  /* ---------- storage ---------- */
+
+  function load() {
+    var raw = null;
+    try { raw = localStorage.getItem(KEY); }
+    catch (e) { storageOK = false; }
+    try { entries = raw ? JSON.parse(raw) : []; }
+    catch (e) { entries = []; }
+    if (!Array.isArray(entries)) entries = [];
+    entries = entries.filter(function (e) { return e && typeof e.t === 'number'; });
+    sort();
+    $('warn').hidden = storageOK;
+  }
+
+  function save() {
+    if (!storageOK) return;
+    try { localStorage.setItem(KEY, JSON.stringify(entries)); }
+    catch (e) { storageOK = false; $('warn').hidden = false; }
+  }
+
+  function saveSoon() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(save, 400);
+  }
+
+  function sort() { entries.sort(function (a, b) { return b.t - a.t; }); }
+
+  function uid() {
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  }
+
+  /* ---------- formatting ---------- */
+
+  var fmtTime = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
+  var fmtDate = new Intl.DateTimeFormat(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+  var fmtFull = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+
+  function startOfDay(ts) {
+    var d = new Date(ts);
+    d.setHours(0, 0, 0, 0);
+    return d.getTime();
+  }
+
+  function daysAgo(ts) {
+    return Math.round((startOfDay(Date.now()) - startOfDay(ts)) / 86400000);
+  }
+
+  function dayLabel(ts) {
+    var n = daysAgo(ts);
+    if (n === 0) return 'Today';
+    if (n === 1) return 'Yesterday';
+    var d = new Date(ts);
+    if (n < 300 && d.getFullYear() === new Date().getFullYear()) return fmtDate.format(d);
+    return fmtFull.format(d);
+  }
+
+  function medLabel(id) {
+    for (var i = 0; i < MEDS.length; i++) if (MEDS[i].id === id) return MEDS[i].label;
+    return '';
+  }
+
+  function metaText(e) {
+    var bits = [];
+    if (e.med) bits.push(e.med === 'none' ? 'No medication' : medLabel(e.med));
+    if (e.note) bits.push(e.note);
+    return bits.join(' · ');
+  }
+
+  function toLocalInput(ts) {
+    var d = new Date(ts);
+    var p = function (n) { return String(n).padStart(2, '0'); };
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) +
+           'T' + p(d.getHours()) + ':' + p(d.getMinutes());
+  }
+
+  /* ---------- rendering ---------- */
+
+  function render() {
+    renderSummary();
+    list.textContent = '';
+    $('empty').hidden = entries.length > 0;
+    for (var i = 0; i < entries.length; i++) list.appendChild(card(entries[i]));
+  }
+
+  function renderSummary() {
+    var s = $('summary');
+    if (!entries.length) {
+      s.textContent = 'No migraines recorded yet.';
+      $('count').textContent = '';
+      return;
+    }
+    var n = daysAgo(entries[0].t);
+    var last = n === 0 ? 'today' : n === 1 ? 'yesterday' : n + ' days ago';
+    var cutoff = Date.now() - 30 * 86400000;
+    var recent = entries.filter(function (e) { return e.t >= cutoff; }).length;
+    s.textContent = 'Last one ' + last + ' · ' + recent + ' in the last 30 days';
+    $('count').textContent = entries.length + (entries.length === 1 ? ' entry' : ' entries');
+  }
+
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+
+  function card(e) {
+    var li = el('li', 'entry');
+    li.dataset.id = e.id;
+    var expanded = !!open[e.id];
+    if (expanded) li.classList.add('open');
+
+    var head = el('button', 'entry-head');
+    head.type = 'button';
+    head.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    head.appendChild(el('span', 'entry-when', dayLabel(e.t) + ', ' + fmtTime.format(new Date(e.t))));
+    var meta = el('span', 'entry-meta', metaText(e) || 'Add details');
+    head.appendChild(meta);
+    head.appendChild(el('span', 'chev', '›'));
+    head.addEventListener('click', function () {
+      if (open[e.id]) delete open[e.id]; else open[e.id] = true;
+      var fresh = card(e);
+      li.replaceWith(fresh);
+      if (open[e.id]) fresh.querySelector('.chip').focus();
+    });
+    li.appendChild(head);
+
+    if (!expanded) return li;
+
+    var body = el('div', 'entry-body');
+
+    // medication
+    var f1 = el('div', 'field');
+    f1.appendChild(el('div', 'lbl', 'Medication'));
+    var chips = el('div', 'chips');
+    f1.appendChild(chips);
+    MEDS.forEach(function (m) {
+      var b = el('button', 'chip', m.label);
+      b.type = 'button';
+      b.setAttribute('aria-pressed', e.med === m.id ? 'true' : 'false');
+      b.addEventListener('click', function () {
+        e.med = (e.med === m.id) ? null : m.id;   // tap again to clear
+        chips.querySelectorAll('.chip').forEach(function (c, i) {
+          c.setAttribute('aria-pressed', MEDS[i].id === e.med ? 'true' : 'false');
+        });
+        meta.textContent = metaText(e) || 'Add details';
+        save();
+      });
+      chips.appendChild(b);
+    });
+    body.appendChild(f1);
+
+    // note
+    var f2 = el('div', 'field');
+    var lab = el('label', null, 'What might have caused it?');
+    lab.htmlFor = 'note-' + e.id;
+    f2.appendChild(lab);
+    var ta = el('textarea');
+    ta.id = 'note-' + e.id;
+    ta.value = e.note || '';
+    ta.placeholder = 'Optional — bad sleep, wine, skipped lunch, screens…';
+    ta.addEventListener('input', function () {
+      e.note = ta.value;
+      meta.textContent = metaText(e) || 'Add details';
+      saveSoon();
+    });
+    ta.addEventListener('blur', save);
+    f2.appendChild(ta);
+    body.appendChild(f2);
+
+    // time
+    var f3 = el('div', 'field');
+    var lab3 = el('label', null, 'When');
+    lab3.htmlFor = 'time-' + e.id;
+    f3.appendChild(lab3);
+    var ti = el('input');
+    ti.type = 'datetime-local';
+    ti.id = 'time-' + e.id;
+    ti.value = toLocalInput(e.t);
+    ti.addEventListener('change', function () {
+      var t = new Date(ti.value).getTime();
+      if (!isNaN(t)) { e.t = t; sort(); save(); render(); }
+    });
+    f3.appendChild(ti);
+    body.appendChild(f3);
+
+    var del = el('button', 'del', 'Delete this entry');
+    del.type = 'button';
+    del.addEventListener('click', function () {
+      if (!confirm('Delete the entry from ' + dayLabel(e.t) + ', ' + fmtTime.format(new Date(e.t)) + '?')) return;
+      remove(e.id);
+    });
+    body.appendChild(del);
+
+    li.appendChild(body);
+    return li;
+  }
+
+  /* ---------- actions ---------- */
+
+  function add() {
+    var e = { id: uid(), t: Date.now(), med: null, note: '' };
+    entries.unshift(e);
+    open = {};
+    open[e.id] = true;
+    save();
+    render();
+
+    if (navigator.vibrate) { try { navigator.vibrate(18); } catch (err) {} }
+
+    var flash = $('flash');
+    flash.textContent = 'Logged at ' + fmtTime.format(new Date(e.t)) + '. ';
+    var undo = el('button', null, 'Undo');
+    undo.type = 'button';
+    undo.addEventListener('click', function () { remove(e.id); flash.textContent = ''; });
+    flash.appendChild(undo);
+    clearTimeout(flashTimer);
+    flashTimer = setTimeout(function () { flash.textContent = ''; }, 12000);
+  }
+
+  function remove(id) {
+    entries = entries.filter(function (e) { return e.id !== id; });
+    delete open[id];
+    save();
+    render();
+  }
+
+  /* ---------- import / export ---------- */
+
+  function download(name, type, text) {
+    var blob = new Blob([text], { type: type });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+  }
+
+  function stamp() { return new Date().toISOString().slice(0, 10); }
+
+  function toCSV() {
+    var q = function (v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; };
+    var rows = [['date', 'time', 'iso_timestamp', 'medication', 'note'].join(',')];
+    entries.slice().reverse().forEach(function (e) {
+      var d = new Date(e.t);
+      rows.push([
+        q(toLocalInput(e.t).slice(0, 10)),
+        q(toLocalInput(e.t).slice(11)),
+        q(d.toISOString()),
+        q(e.med || ''),
+        q(e.note || '')
+      ].join(','));
+    });
+    return rows.join('\r\n');
+  }
+
+  $('csvBtn').addEventListener('click', function () {
+    download('migraines-' + stamp() + '.csv', 'text/csv', toCSV());
+  });
+  $('jsonBtn').addEventListener('click', function () {
+    download('migraines-' + stamp() + '.json', 'application/json', JSON.stringify(entries, null, 2));
+  });
+  $('copyBtn').addEventListener('click', function () {
+    var text = JSON.stringify(entries, null, 2);
+    var done = function (ok) {
+      var flash = $('flash');
+      flash.textContent = ok ? 'Copied ' + entries.length + ' entries to the clipboard.' : 'Could not copy.';
+      clearTimeout(flashTimer);
+      flashTimer = setTimeout(function () { flash.textContent = ''; }, 4000);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { done(true); }, function () { done(false); });
+    } else {
+      done(false);
+    }
+  });
+
+  $('importFile').addEventListener('change', function (ev) {
+    var file = ev.target.files && ev.target.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function () {
+      var incoming;
+      try { incoming = JSON.parse(String(reader.result)); }
+      catch (err) { alert('That file is not valid JSON.'); return; }
+      if (!Array.isArray(incoming)) { alert('Expected a JSON array of entries.'); return; }
+
+      var seen = {};
+      entries.forEach(function (e) { seen[e.id] = true; });
+      var added = 0;
+      incoming.forEach(function (e) {
+        if (!e || typeof e.t !== 'number') return;
+        var id = e.id || uid();
+        if (seen[id]) return;
+        seen[id] = true;
+        entries.push({ id: id, t: e.t, med: e.med || null, note: e.note || '' });
+        added++;
+      });
+      sort();
+      save();
+      render();
+      alert(added ? 'Imported ' + added + ' ' + (added === 1 ? 'entry' : 'entries') + '.' : 'Nothing new to import.');
+    };
+    reader.readAsText(file);
+    ev.target.value = '';
+  });
+
+  /* ---------- go ---------- */
+
+  $('logBtn').addEventListener('click', add);
+
+  load();
+  render();
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('./sw.js').catch(function () {});
+    });
+  }
+})();
+</script>
+</body>
+</html>
