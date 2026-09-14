@@ -12,6 +12,12 @@ your browser's local storage and never leave the device.
 1. **Turn on GitHub Pages** — repo *Settings → Pages → Build and deployment*, source
    *Deploy from a branch*, branch `main` (or whichever branch holds this), folder `/ (root)`.
    Give it a minute, then it's live at `https://<your-username>.github.io/tracker/`.
+
+   > Pages only serves **private** repos on a paid GitHub plan. On the free plan the repo
+   > has to be public — which is fine here: the code contains no personal data, and your
+   > migraine entries never go near the repo. They stay in your phone's browser storage.
+   > If you'd rather keep it private, any static host works instead (Netlify, Cloudflare
+   > Pages, Vercel) — point it at this repo, no build command, publish directory `/`.
 2. **Open that URL on your phone.**
 3. **Add it to your home screen** so it opens like an app and works offline:
    - iOS Safari: Share → *Add to Home Screen*
