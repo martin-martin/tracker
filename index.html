@@ -27,6 +27,7 @@
     --accent: #5b46c4;
     --accent-text: #ffffff;
     --danger: #b3261e;
+    --caution: #8a5300;
     --radius: 14px;
     --shadow: 0 1px 2px rgba(29, 27, 38, .06), 0 4px 14px rgba(29, 27, 38, .05);
   }
@@ -41,6 +42,7 @@
       --accent: #7c66e8;
       --accent-text: #120f1a;
       --danger: #f2b8b5;
+      --caution: #f0c36b;
       --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 4px 14px rgba(0, 0, 0, .25);
     }
   }
@@ -162,6 +164,28 @@
   .hint { margin: 6px 0 0; font-size: .82rem; color: var(--muted); }
   .hint.bad { color: var(--danger); }
 
+  .dose { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; margin-top: 10px; }
+  .dose span { flex: 1 0 100%; font-size: .85rem; font-weight: 600; }
+  .dose input { flex: 1; min-width: 0; }
+  .x {
+    flex: none; width: 38px; height: 38px; border-radius: 10px;
+    background: var(--surface-2); color: var(--muted); font-size: 1.1rem; line-height: 1;
+  }
+
+  #overuse {
+    background: var(--surface); border: 1px solid var(--caution); color: var(--caution);
+    border-radius: var(--radius); padding: 11px 13px; font-size: .85rem; margin: 0 0 16px;
+  }
+
+  .stats {
+    margin: 0; background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 4px 14px;
+  }
+  .stats div { padding: 10px 0; border-top: 1px solid var(--border); }
+  .stats div:first-child { border-top: 0; }
+  .stats dt { font-size: .78rem; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
+  .stats dd { margin: 2px 0 0; font-size: .92rem; }
+
   #overBtn {
     display: block; width: 100%; margin-top: 10px;
     padding: 14px; border-radius: 14px;
@@ -207,6 +231,8 @@
     <p id="summary">&nbsp;</p>
   </header>
 
+  <p id="overuse" hidden></p>
+
   <main>
     <button id="logBtn" type="button">
       I have a migraine
@@ -225,6 +251,13 @@
       </div>
       <ol id="list"></ol>
       <p id="empty">Nothing logged yet. Tap the button when it starts.</p>
+    </section>
+
+    <section id="patterns" hidden>
+      <div class="bar">
+        <h2>Patterns</h2>
+      </div>
+      <dl class="stats" id="stats"></dl>
     </section>
   </main>
 
@@ -250,9 +283,40 @@
   var KEY = 'migraine-log-v1';
   var MEDS = [
     { id: 'acetaminophen', label: 'Acetaminophen' },
-    { id: 'ibuprofen',     label: 'Ibuprofen' },
-    { id: 'none',          label: 'Nothing' }
+    { id: 'ibuprofen',     label: 'Ibuprofen' }
   ];
+  var SEVERITY = [
+    { id: 'mild',     label: 'Mild' },
+    { id: 'moderate', label: 'Moderate' },
+    { id: 'severe',   label: 'Severe' }
+  ];
+  var RELIEF = [
+    { id: 'yes',    label: 'Yes, it went away' },
+    { id: 'partly', label: 'Partly' },
+    { id: 'no',     label: 'No' }
+  ];
+  var SYMPTOMS = [
+    { id: 'nausea',   label: 'Nausea' },
+    { id: 'vomiting', label: 'Vomiting' },
+    { id: 'light',    label: 'Light hurts' },
+    { id: 'sound',    label: 'Noise hurts' },
+    { id: 'aura',     label: 'Aura' },
+    { id: 'right',    label: 'Right side' },
+    { id: 'left',     label: 'Left side' }
+  ];
+  var TRIGGERS = [
+    { id: 'screen',   label: 'Screen time' },
+    { id: 'sleep',    label: 'Bad sleep' },
+    { id: 'late',     label: 'Late night' },
+    { id: 'nap',      label: 'Long nap' },
+    { id: 'alcohol',  label: 'Alcohol' },
+    { id: 'caffeine', label: 'Coffee' },
+    { id: 'stress',   label: 'Stress' },
+    { id: 'meal',     label: 'Skipped meal' }
+  ];
+  // Painkillers on 15+ days a month can cause medication-overuse headache; warn a bit before that.
+  var OVERUSE_WARN = 10;
+  var OVERUSE_LIMIT = 15;
 
   var entries = [];
   var open = {};            // id -> true, which cards are expanded
@@ -288,19 +352,73 @@
     saveTimer = setTimeout(save, 400);
   }
 
-  // Older entries stored a single `med` string; now it's a `meds` array, plus an optional `end`.
-  function normalize(e) {
-    var meds = Array.isArray(e.meds) ? e.meds.slice() : (e.med ? [e.med] : []);
-    var out = { id: e.id || uid(), t: e.t, meds: meds, note: e.note || '' };
-    if (typeof e.end === 'number' && e.end >= e.t) out.end = e.end;
-    return out;
-  }
-
   function sort() { entries.sort(function (a, b) { return b.t - a.t; }); }
 
   function uid() {
     return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
   }
+
+  /* ---------- options ---------- */
+
+  function optIndex(opts, id) {
+    for (var i = 0; i < opts.length; i++) if (opts[i].id === id) return i;
+    return -1;
+  }
+
+  function optLabel(opts, id) {
+    var i = optIndex(opts, id);
+    return i < 0 ? '' : opts[i].label;
+  }
+
+  function pickOne(opts, id) { return optIndex(opts, id) >= 0 ? id : null; }
+
+  // Known ids only, no duplicates, in the options' own order.
+  function pickMany(opts, ids) {
+    if (!Array.isArray(ids)) return [];
+    return opts.filter(function (o) { return ids.indexOf(o.id) >= 0; })
+               .map(function (o) { return o.id; });
+  }
+
+  function toggleIn(opts, ids, id) {
+    var on = ids.indexOf(id) >= 0;
+    return pickMany(opts, on ? ids.filter(function (x) { return x !== id; }) : ids.concat(id));
+  }
+
+  /* ---------- entries ---------- */
+
+  // Brings any stored or imported entry up to the current shape. Older versions stored
+  // `med` (one string), then `meds` (array of ids, 'none' meaning nothing taken).
+  function normalize(e) {
+    var out = {
+      id: e.id || uid(),
+      t: e.t,
+      severity: pickOne(SEVERITY, e.severity),
+      doses: [],
+      noMeds: false,
+      relief: pickOne(RELIEF, e.relief),
+      symptoms: pickMany(SYMPTOMS, e.symptoms),
+      triggers: pickMany(TRIGGERS, e.triggers),
+      note: e.note || ''
+    };
+    if (Array.isArray(e.doses)) {
+      e.doses.forEach(function (d) {
+        if (d && optIndex(MEDS, d.med) >= 0 && typeof d.t === 'number') out.doses.push({ med: d.med, t: d.t });
+      });
+      out.noMeds = e.noMeds === true;
+    } else {
+      var meds = Array.isArray(e.meds) ? e.meds : (e.med ? [e.med] : []);
+      meds.forEach(function (m) {
+        if (m === 'none') out.noMeds = true;
+        else if (optIndex(MEDS, m) >= 0) out.doses.push({ med: m, t: e.t });
+      });
+    }
+    if (out.doses.length) out.noMeds = false;
+    sortDoses(out);
+    if (typeof e.end === 'number' && e.end >= e.t) out.end = e.end;
+    return out;
+  }
+
+  function sortDoses(e) { e.doses.sort(function (a, b) { return a.t - b.t; }); }
 
   /* ---------- formatting ---------- */
 
@@ -327,16 +445,6 @@
     return fmtFull.format(d);
   }
 
-  function medIndex(id) {
-    for (var i = 0; i < MEDS.length; i++) if (MEDS[i].id === id) return i;
-    return MEDS.length;
-  }
-
-  function medLabel(id) {
-    for (var i = 0; i < MEDS.length; i++) if (MEDS[i].id === id) return MEDS[i].label;
-    return '';
-  }
-
   function fmtDuration(ms) {
     var min = Math.max(0, Math.round(ms / 60000));
     if (min < 60) return min + ' min';
@@ -347,10 +455,13 @@
     return d + ' d' + (h ? ' ' + h + ' h' : '');
   }
 
-  function medsText(meds) {
-    if (!meds.length) return '';
-    if (meds[0] === 'none') return 'No medication';
-    return meds.map(medLabel).join(' + ');
+  // "Acetaminophen ×2 + Ibuprofen"
+  function medsText(e) {
+    if (e.noMeds) return 'No medication';
+    return MEDS.map(function (m) {
+      var n = e.doses.filter(function (d) { return d.med === m.id; }).length;
+      return n ? m.label + (n > 1 ? ' ×' + n : '') : '';
+    }).filter(Boolean).join(' + ');
   }
 
   // The newest entry, if it's recent and hasn't been marked over yet.
@@ -363,7 +474,9 @@
   function metaText(e) {
     var bits = [];
     if (e.end != null) bits.push(fmtDuration(e.end - e.t));
-    if (e.meds.length) bits.push(medsText(e.meds));
+    if (e.severity) bits.push(optLabel(SEVERITY, e.severity));
+    var meds = medsText(e);
+    if (meds) bits.push(meds);
     if (e.note) bits.push(e.note);
     return bits.join(' · ');
   }
@@ -375,14 +488,51 @@
            'T' + p(d.getHours()) + ':' + p(d.getMinutes());
   }
 
+  function fromLocalInput(v) {
+    var t = v ? new Date(v).getTime() : NaN;
+    return isNaN(t) ? null : t;
+  }
+
+  /* ---------- stats ---------- */
+
+  function painkillerDays(since) {
+    var days = {};
+    entries.forEach(function (e) {
+      e.doses.forEach(function (d) { if (d.t >= since) days[startOfDay(d.t)] = true; });
+    });
+    return Object.keys(days).length;
+  }
+
+  function median(xs) {
+    var s = xs.slice().sort(function (a, b) { return a - b; });
+    var m = Math.floor(s.length / 2);
+    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+  }
+
+  // "Screen time 5 · Bad sleep 3", most frequent first.
+  function topCounts(opts, field, max) {
+    var counts = opts.map(function (o) {
+      return { label: o.label, n: entries.filter(function (e) { return e[field].indexOf(o.id) >= 0; }).length };
+    }).filter(function (c) { return c.n; });
+    counts.sort(function (a, b) { return b.n - a.n; });
+    return counts.slice(0, max).map(function (c) { return c.label + ' ' + c.n; }).join(' · ');
+  }
+
   /* ---------- rendering ---------- */
 
-  function render() {
+  // Rebuilds the page. `focusKey` puts focus back on the control that triggered it.
+  function render(focusKey) {
     renderSummary();
+    renderOveruse();
     renderOver();
+    renderStats();
     list.textContent = '';
     $('empty').hidden = entries.length > 0;
     for (var i = 0; i < entries.length; i++) list.appendChild(card(entries[i]));
+    if (focusKey) {
+      var f = list.querySelector('[data-k="' + focusKey + '"]');
+      if (f) f.focus();
+    }
   }
 
   function renderSummary() {
@@ -400,6 +550,17 @@
     $('count').textContent = entries.length + (entries.length === 1 ? ' entry' : ' entries');
   }
 
+  function renderOveruse() {
+    var days = painkillerDays(Date.now() - 30 * 86400000);
+    var box = $('overuse');
+    box.hidden = days < OVERUSE_WARN;
+    if (box.hidden) return;
+    box.textContent = 'Painkillers on ' + days + ' of the last 30 days. ' +
+      (days >= OVERUSE_LIMIT
+        ? 'At 15 or more days a month they can start causing headaches themselves (medication-overuse headache). Worth talking to a doctor about.'
+        : 'At 15 or more days a month they can start causing headaches themselves (medication-overuse headache), so keep an eye on it.');
+  }
+
   function renderOver() {
     var e = ongoing();
     $('overBtn').hidden = !e;
@@ -407,11 +568,74 @@
       fmtTime.format(new Date(e.t)) + ' — tap to record that it’s ended now';
   }
 
+  function renderStats() {
+    var dl = $('stats');
+    dl.textContent = '';
+    $('patterns').hidden = !entries.length;
+    if (!entries.length) return;
+
+    var stat = function (label, value) {
+      if (!value) return;
+      var row = el('div');
+      row.appendChild(el('dt', null, label));
+      row.appendChild(el('dd', null, value));
+      dl.appendChild(row);
+    };
+
+    var cutoff = Date.now() - 30 * 86400000;
+    var recent = entries.filter(function (e) { return e.t >= cutoff; }).length;
+    var days = painkillerDays(cutoff);
+    stat('Last 30 days', recent + (recent === 1 ? ' migraine' : ' migraines') +
+      ' · painkillers on ' + days + (days === 1 ? ' day' : ' days'));
+
+    var lengths = entries.filter(function (e) { return e.end != null; })
+                         .map(function (e) { return e.end - e.t; });
+    if (lengths.length) {
+      stat('Typical length', fmtDuration(median(lengths)) +
+        (lengths.length > 1 ? ' (median of ' + lengths.length + ')' : '') +
+        ' · longest ' + fmtDuration(Math.max.apply(null, lengths)));
+    }
+
+    stat('Did medicine help?', RELIEF.map(function (r) {
+      var n = entries.filter(function (e) { return e.relief === r.id; }).length;
+      return n ? (r.id === 'yes' ? 'Yes' : r.label) + ' ' + n : '';
+    }).filter(Boolean).join(' · '));
+
+    stat('Common triggers', topCounts(TRIGGERS, 'triggers', 4));
+    stat('Common symptoms', topCounts(SYMPTOMS, 'symptoms', 4));
+  }
+
   function el(tag, cls, text) {
     var n = document.createElement(tag);
     if (cls) n.className = cls;
     if (text != null) n.textContent = text;
     return n;
+  }
+
+  // A labelled row of toggle chips. `isOn(id)` reads the state, `toggle(id)` changes it.
+  function chipField(e, group, label, opts, isOn, toggle) {
+    var f = el('div', 'field');
+    f.appendChild(el('div', 'lbl', label));
+    var chips = el('div', 'chips');
+    chips.setAttribute('role', 'group');
+    chips.setAttribute('aria-label', label);
+    opts.forEach(function (o) {
+      var b = el('button', 'chip', o.label);
+      b.type = 'button';
+      b.dataset.k = e.id + ':' + group + ':' + o.id;
+      b.setAttribute('aria-pressed', isOn(o.id) ? 'true' : 'false');
+      b.addEventListener('click', function () { toggle(o.id); save(); render(b.dataset.k); });
+      chips.appendChild(b);
+    });
+    f.appendChild(chips);
+    return f;
+  }
+
+  // When a dose is added: now while the migraine is going, otherwise (filling in an old
+  // entry) the time of the previous dose or the start, to be adjusted by hand.
+  function doseTime(e) {
+    if (e === ongoing()) return Math.max(Date.now(), e.t);
+    return e.doses.length ? e.doses[e.doses.length - 1].t : e.t;
   }
 
   function card(e) {
@@ -439,43 +663,81 @@
 
     var body = el('div', 'entry-body');
 
-    // medication
-    var f1 = el('div', 'field');
-    f1.appendChild(el('div', 'lbl', 'Medication'));
-    var chips = el('div', 'chips');
-    f1.appendChild(chips);
-    MEDS.forEach(function (m) {
-      var b = el('button', 'chip', m.label);
-      b.type = 'button';
-      b.setAttribute('aria-pressed', e.meds.indexOf(m.id) >= 0 ? 'true' : 'false');
-      b.addEventListener('click', function () {
-        // Any combination of medicines; "Nothing" excludes the rest. Tap again to clear.
-        var on = e.meds.indexOf(m.id) >= 0;
-        if (m.id === 'none') e.meds = on ? [] : ['none'];
-        else {
-          e.meds = e.meds.filter(function (id) { return id !== 'none' && id !== m.id; });
-          if (!on) e.meds.push(m.id);
-          e.meds.sort(function (a, b) { return medIndex(a) - medIndex(b); });
-        }
-        chips.querySelectorAll('.chip').forEach(function (c, i) {
-          c.setAttribute('aria-pressed', e.meds.indexOf(MEDS[i].id) >= 0 ? 'true' : 'false');
-        });
-        meta.textContent = metaText(e) || 'Add details';
-        save();
+    // severity
+    body.appendChild(chipField(e, 'sev', 'How bad?', SEVERITY,
+      function (id) { return e.severity === id; },
+      function (id) { e.severity = e.severity === id ? null : id; }));
+
+    // medication: each tap adds a dose with its own time
+    var addOpts = MEDS.map(function (m) { return { id: m.id, label: '+ ' + m.label }; });
+    if (!e.doses.length) addOpts.push({ id: 'none', label: 'Nothing' });
+    var fm = chipField(e, 'med', 'Medication', addOpts,
+      function (id) { return id === 'none' && e.noMeds; },
+      function (id) {
+        if (id === 'none') { e.noMeds = !e.noMeds; return; }
+        e.noMeds = false;
+        e.doses.push({ med: id, t: doseTime(e) });
+        sortDoses(e);
       });
-      chips.appendChild(b);
+    fm.querySelectorAll('.chip').forEach(function (c, i) {
+      if (i < MEDS.length) c.removeAttribute('aria-pressed');   // these are actions, not toggles
     });
-    body.appendChild(f1);
+    e.doses.forEach(function (d, i) {
+      var row = el('div', 'dose');
+      row.appendChild(el('span', null, optLabel(MEDS, d.med)));
+      var inp = el('input');
+      inp.type = 'datetime-local';
+      inp.value = toLocalInput(d.t);
+      inp.setAttribute('aria-label', optLabel(MEDS, d.med) + ' taken at');
+      inp.addEventListener('change', function () {
+        var t = fromLocalInput(inp.value);
+        if (t == null) return;
+        d.t = t;
+        sortDoses(e);
+        save();
+        render();
+      });
+      row.appendChild(inp);
+      var x = el('button', 'x', '×');
+      x.type = 'button';
+      x.setAttribute('aria-label', 'Remove this ' + optLabel(MEDS, d.med) + ' dose');
+      x.addEventListener('click', function () {
+        e.doses.splice(i, 1);
+        if (!e.doses.length) e.relief = null;
+        save();
+        render(e.id + ':med:' + d.med);
+      });
+      row.appendChild(x);
+      fm.appendChild(row);
+    });
+    if (!e.doses.length && !e.noMeds) {
+      fm.appendChild(el('p', 'hint', 'Tap a medicine each time you take one — every dose gets its own time.'));
+    }
+    body.appendChild(fm);
+
+    if (e.doses.length) {
+      body.appendChild(chipField(e, 'rel', 'Did it help?', RELIEF,
+        function (id) { return e.relief === id; },
+        function (id) { e.relief = e.relief === id ? null : id; }));
+    }
+
+    body.appendChild(chipField(e, 'sym', 'Symptoms', SYMPTOMS,
+      function (id) { return e.symptoms.indexOf(id) >= 0; },
+      function (id) { e.symptoms = toggleIn(SYMPTOMS, e.symptoms, id); }));
+
+    body.appendChild(chipField(e, 'trg', 'Possible triggers', TRIGGERS,
+      function (id) { return e.triggers.indexOf(id) >= 0; },
+      function (id) { e.triggers = toggleIn(TRIGGERS, e.triggers, id); }));
 
     // note
     var f2 = el('div', 'field');
-    var lab = el('label', null, 'What might have caused it?');
+    var lab = el('label', null, 'Notes');
     lab.htmlFor = 'note-' + e.id;
     f2.appendChild(lab);
     var ta = el('textarea');
     ta.id = 'note-' + e.id;
     ta.value = e.note || '';
-    ta.placeholder = 'Optional — bad sleep, wine, skipped lunch, screens…';
+    ta.placeholder = 'Optional — anything else worth remembering';
     ta.addEventListener('input', function () {
       e.note = ta.value;
       meta.textContent = metaText(e) || 'Add details';
@@ -485,7 +747,7 @@
     f2.appendChild(ta);
     body.appendChild(f2);
 
-    // time
+    // start
     var f3 = el('div', 'field');
     var lab3 = el('label', null, 'Started');
     lab3.htmlFor = 'time-' + e.id;
@@ -495,8 +757,11 @@
     ti.id = 'time-' + e.id;
     ti.value = toLocalInput(e.t);
     ti.addEventListener('change', function () {
-      var t = new Date(ti.value).getTime();
-      if (!isNaN(t)) { e.t = t; sort(); save(); render(); }
+      var t = fromLocalInput(ti.value);
+      if (t == null) return;
+      e.t = t;
+      if (e.end != null && e.end < t) delete e.end;
+      sort(); save(); render();
     });
     f3.appendChild(ti);
     body.appendChild(f3);
@@ -532,8 +797,8 @@
     }
     en.addEventListener('change', function () {
       if (!en.value) return setEnd(null);
-      var t = new Date(en.value).getTime();
-      if (!isNaN(t)) setEnd(t);
+      var t = fromLocalInput(en.value);
+      if (t != null) setEnd(t);
     });
     now.addEventListener('click', function () {
       setEnd(e.end != null ? null : Math.max(Date.now(), e.t));
@@ -553,8 +818,19 @@
 
   /* ---------- actions ---------- */
 
+  function showFlash(text, undoFn) {
+    var flash = $('flash');
+    flash.textContent = text + ' ';
+    var undo = el('button', null, 'Undo');
+    undo.type = 'button';
+    undo.addEventListener('click', function () { undoFn(); flash.textContent = ''; });
+    flash.appendChild(undo);
+    clearTimeout(flashTimer);
+    flashTimer = setTimeout(function () { flash.textContent = ''; }, 12000);
+  }
+
   function add() {
-    var e = { id: uid(), t: Date.now(), meds: [], note: '' };
+    var e = normalize({ id: uid(), t: Date.now() });
     entries.unshift(e);
     open = {};
     open[e.id] = true;
@@ -562,15 +838,7 @@
     render();
 
     if (navigator.vibrate) { try { navigator.vibrate(18); } catch (err) {} }
-
-    var flash = $('flash');
-    flash.textContent = 'Logged at ' + fmtTime.format(new Date(e.t)) + '. ';
-    var undo = el('button', null, 'Undo');
-    undo.type = 'button';
-    undo.addEventListener('click', function () { remove(e.id); flash.textContent = ''; });
-    flash.appendChild(undo);
-    clearTimeout(flashTimer);
-    flashTimer = setTimeout(function () { flash.textContent = ''; }, 12000);
+    showFlash('Logged at ' + fmtTime.format(new Date(e.t)) + '.', function () { remove(e.id); });
   }
 
   function markOver() {
@@ -579,14 +847,7 @@
     e.end = Date.now();
     save();
     render();
-    var flash = $('flash');
-    flash.textContent = 'Lasted ' + fmtDuration(e.end - e.t) + '. ';
-    var undo = el('button', null, 'Undo');
-    undo.type = 'button';
-    undo.addEventListener('click', function () { delete e.end; save(); render(); flash.textContent = ''; });
-    flash.appendChild(undo);
-    clearTimeout(flashTimer);
-    flashTimer = setTimeout(function () { flash.textContent = ''; }, 12000);
+    showFlash('Lasted ' + fmtDuration(e.end - e.t) + '.', function () { delete e.end; save(); render(); });
   }
 
   function remove(id) {
@@ -614,16 +875,25 @@
 
   function toCSV() {
     var q = function (v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; };
-    var rows = [['date', 'time', 'iso_timestamp', 'end_iso_timestamp', 'duration_hours', 'medication', 'note'].join(',')];
+    var rows = [[
+      'date', 'time', 'iso_timestamp', 'end_iso_timestamp', 'duration_hours', 'severity',
+      'medication', 'doses', 'relief', 'symptoms', 'triggers', 'note'
+    ].join(',')];
     entries.slice().reverse().forEach(function (e) {
       var d = new Date(e.t);
+      var meds = e.noMeds ? 'none' : pickMany(MEDS, e.doses.map(function (x) { return x.med; })).join(';');
       rows.push([
         q(toLocalInput(e.t).slice(0, 10)),
         q(toLocalInput(e.t).slice(11)),
         q(d.toISOString()),
         q(e.end != null ? new Date(e.end).toISOString() : ''),
         q(e.end != null ? ((e.end - e.t) / 3600000).toFixed(1) : ''),
-        q(e.meds.join(';')),
+        q(e.severity || ''),
+        q(meds),
+        q(e.doses.map(function (x) { return x.med + ' ' + toLocalInput(x.t).replace('T', ' '); }).join('; ')),
+        q(e.relief || ''),
+        q(e.symptoms.join(';')),
+        q(e.triggers.join(';')),
         q(e.note || '')
       ].join(','));
     });

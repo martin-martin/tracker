@@ -27,9 +27,13 @@ your browser's local storage and never leave the device.
 
 - **Tap the big button.** That's the whole required interaction — it records the current
   time immediately. If it was a mis-tap, *Undo* is right there.
-- **Optional details.** The new entry opens with three medication chips (Acetaminophen,
-  Ibuprofen, Nothing) and a free-text note. Pick both medicines if you took both; *Nothing*
-  clears the others. Tap a selected chip again to clear it.
+- **Optional details.** The new entry opens straight away, and everything in it is optional:
+  - *How bad?* — mild, moderate, severe.
+  - *Medication* — tap *+ Acetaminophen* / *+ Ibuprofen* each time you take one; every dose
+    gets its own time (adjustable, × to remove). *Nothing* records that you took none.
+  - *Did it help?* — appears once a dose is logged.
+  - *Symptoms* and *Possible triggers* — one-tap chips, so they can be counted later.
+  - *Notes* for anything else.
 - **When it's over.** While the latest migraine is still open, an *It's over* button sits
   under the big one — tap it and the end time is recorded, so overnight migraines become one
   entry with a duration. You can also set or fix *Ended* on any entry (*Now* / *Clear*).
@@ -38,7 +42,11 @@ your browser's local storage and never leave the device.
 - **Later edits.** Tap any past entry to expand and change it, or delete it.
 
 The line under the title shows when the last one was and how many you've had in the last
-30 days.
+30 days. Below the history, *Patterns* sums things up: painkiller days this month, typical
+length, how often medicine helped, and the most common triggers and symptoms.
+
+If painkillers were taken on 10 or more of the last 30 days, a notice appears at the top:
+on 15+ days a month they can cause medication-overuse headache.
 
 ## Getting your data out
 
