@@ -28,8 +28,12 @@ your browser's local storage and never leave the device.
 - **Tap the big button.** That's the whole required interaction — it records the current
   time immediately. If it was a mis-tap, *Undo* is right there.
 - **Optional details.** The new entry opens with three medication chips (Acetaminophen,
-  Ibuprofen, Nothing) and a free-text note. Tap a selected chip again to clear it.
-- **Wrong time?** If you're logging after the fact, edit the *When* field on the entry —
+  Ibuprofen, Nothing) and a free-text note. Pick both medicines if you took both; *Nothing*
+  clears the others. Tap a selected chip again to clear it.
+- **When it's over.** While the latest migraine is still open, an *It's over* button sits
+  under the big one — tap it and the end time is recorded, so overnight migraines become one
+  entry with a duration. You can also set or fix *Ended* on any entry (*Now* / *Clear*).
+- **Wrong time?** If you're logging after the fact, edit the *Started* field on the entry —
   the list re-sorts itself.
 - **Later edits.** Tap any past entry to expand and change it, or delete it.
 

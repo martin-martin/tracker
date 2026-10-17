@@ -1,5 +1,5 @@
 /* Offline shell for the migraine log. Bump CACHE to force clients onto new assets. */
-var CACHE = 'migraine-log-v1';
+var CACHE = 'migraine-log-v2';
 var ASSETS = [
   './',
   './index.html',

@@ -153,6 +153,23 @@
   }
   textarea { min-height: 62px; }
 
+  .row { display: flex; gap: 8px; align-items: center; }
+  .row input { flex: 1; min-width: 0; }
+  .mini {
+    flex: none; padding: 9px 12px; border-radius: 10px;
+    background: var(--surface-2); font-size: .85rem; font-weight: 600;
+  }
+  .hint { margin: 6px 0 0; font-size: .82rem; color: var(--muted); }
+  .hint.bad { color: var(--danger); }
+
+  #overBtn {
+    display: block; width: 100%; margin-top: 10px;
+    padding: 14px; border-radius: 14px;
+    background: var(--surface); border: 1px solid var(--border);
+    font-weight: 600; touch-action: manipulation;
+  }
+  #overBtn small { display: block; font-weight: 400; font-size: .8rem; color: var(--muted); }
+
   .del { margin-top: 16px; color: var(--danger); font-size: .88rem; font-weight: 600; padding: 6px 0; }
 
   #empty { color: var(--muted); font-size: .92rem; text-align: center; padding: 26px 8px; margin: 0; }
@@ -194,6 +211,10 @@
     <button id="logBtn" type="button">
       I have a migraine
       <small>Records the time right away — details optional</small>
+    </button>
+    <button id="overBtn" type="button" hidden>
+      It’s over
+      <small id="overSub"></small>
     </button>
     <p id="flash" role="status" aria-live="polite"></p>
 
@@ -251,7 +272,7 @@
     try { entries = raw ? JSON.parse(raw) : []; }
     catch (e) { entries = []; }
     if (!Array.isArray(entries)) entries = [];
-    entries = entries.filter(function (e) { return e && typeof e.t === 'number'; });
+    entries = entries.filter(function (e) { return e && typeof e.t === 'number'; }).map(normalize);
     sort();
     $('warn').hidden = storageOK;
   }
@@ -265,6 +286,14 @@
   function saveSoon() {
     clearTimeout(saveTimer);
     saveTimer = setTimeout(save, 400);
+  }
+
+  // Older entries stored a single `med` string; now it's a `meds` array, plus an optional `end`.
+  function normalize(e) {
+    var meds = Array.isArray(e.meds) ? e.meds.slice() : (e.med ? [e.med] : []);
+    var out = { id: e.id || uid(), t: e.t, meds: meds, note: e.note || '' };
+    if (typeof e.end === 'number' && e.end >= e.t) out.end = e.end;
+    return out;
   }
 
   function sort() { entries.sort(function (a, b) { return b.t - a.t; }); }
@@ -298,14 +327,43 @@
     return fmtFull.format(d);
   }
 
+  function medIndex(id) {
+    for (var i = 0; i < MEDS.length; i++) if (MEDS[i].id === id) return i;
+    return MEDS.length;
+  }
+
   function medLabel(id) {
     for (var i = 0; i < MEDS.length; i++) if (MEDS[i].id === id) return MEDS[i].label;
     return '';
   }
 
+  function fmtDuration(ms) {
+    var min = Math.max(0, Math.round(ms / 60000));
+    if (min < 60) return min + ' min';
+    var h = Math.floor(min / 60), m = min % 60;
+    if (h < 24) return h + ' h' + (m ? ' ' + m + ' min' : '');
+    var d = Math.floor(h / 24);
+    h = h % 24;
+    return d + ' d' + (h ? ' ' + h + ' h' : '');
+  }
+
+  function medsText(meds) {
+    if (!meds.length) return '';
+    if (meds[0] === 'none') return 'No medication';
+    return meds.map(medLabel).join(' + ');
+  }
+
+  // The newest entry, if it's recent and hasn't been marked over yet.
+  function ongoing() {
+    var e = entries[0];
+    if (!e || e.end != null) return null;
+    return Date.now() - e.t < 3 * 86400000 ? e : null;
+  }
+
   function metaText(e) {
     var bits = [];
-    if (e.med) bits.push(e.med === 'none' ? 'No medication' : medLabel(e.med));
+    if (e.end != null) bits.push(fmtDuration(e.end - e.t));
+    if (e.meds.length) bits.push(medsText(e.meds));
     if (e.note) bits.push(e.note);
     return bits.join(' · ');
   }
@@ -321,6 +379,7 @@
 
   function render() {
     renderSummary();
+    renderOver();
     list.textContent = '';
     $('empty').hidden = entries.length > 0;
     for (var i = 0; i < entries.length; i++) list.appendChild(card(entries[i]));
@@ -339,6 +398,13 @@
     var recent = entries.filter(function (e) { return e.t >= cutoff; }).length;
     s.textContent = 'Last one ' + last + ' · ' + recent + ' in the last 30 days';
     $('count').textContent = entries.length + (entries.length === 1 ? ' entry' : ' entries');
+  }
+
+  function renderOver() {
+    var e = ongoing();
+    $('overBtn').hidden = !e;
+    if (e) $('overSub').textContent = 'Started ' + dayLabel(e.t).toLowerCase() + ', ' +
+      fmtTime.format(new Date(e.t)) + ' — tap to record that it’s ended now';
   }
 
   function el(tag, cls, text) {
@@ -381,11 +447,18 @@
     MEDS.forEach(function (m) {
       var b = el('button', 'chip', m.label);
       b.type = 'button';
-      b.setAttribute('aria-pressed', e.med === m.id ? 'true' : 'false');
+      b.setAttribute('aria-pressed', e.meds.indexOf(m.id) >= 0 ? 'true' : 'false');
       b.addEventListener('click', function () {
-        e.med = (e.med === m.id) ? null : m.id;   // tap again to clear
+        // Any combination of medicines; "Nothing" excludes the rest. Tap again to clear.
+        var on = e.meds.indexOf(m.id) >= 0;
+        if (m.id === 'none') e.meds = on ? [] : ['none'];
+        else {
+          e.meds = e.meds.filter(function (id) { return id !== 'none' && id !== m.id; });
+          if (!on) e.meds.push(m.id);
+          e.meds.sort(function (a, b) { return medIndex(a) - medIndex(b); });
+        }
         chips.querySelectorAll('.chip').forEach(function (c, i) {
-          c.setAttribute('aria-pressed', MEDS[i].id === e.med ? 'true' : 'false');
+          c.setAttribute('aria-pressed', e.meds.indexOf(MEDS[i].id) >= 0 ? 'true' : 'false');
         });
         meta.textContent = metaText(e) || 'Add details';
         save();
@@ -414,7 +487,7 @@
 
     // time
     var f3 = el('div', 'field');
-    var lab3 = el('label', null, 'When');
+    var lab3 = el('label', null, 'Started');
     lab3.htmlFor = 'time-' + e.id;
     f3.appendChild(lab3);
     var ti = el('input');
@@ -427,6 +500,44 @@
     });
     f3.appendChild(ti);
     body.appendChild(f3);
+
+    // end
+    var f4 = el('div', 'field');
+    var lab4 = el('label', null, 'Ended');
+    lab4.htmlFor = 'end-' + e.id;
+    f4.appendChild(lab4);
+    var row = el('div', 'row');
+    var en = el('input');
+    en.type = 'datetime-local';
+    en.id = 'end-' + e.id;
+    en.value = e.end != null ? toLocalInput(e.end) : '';
+    row.appendChild(en);
+    var now = el('button', 'mini', e.end != null ? 'Clear' : 'Now');
+    now.type = 'button';
+    row.appendChild(now);
+    f4.appendChild(row);
+    var hint = el('p', 'hint', e.end != null ? 'Lasted ' + fmtDuration(e.end - e.t) : 'Leave empty while it’s still going');
+    f4.appendChild(hint);
+    body.appendChild(f4);
+
+    function setEnd(t) {
+      if (t != null && t < e.t) {
+        hint.textContent = 'That’s before it started.';
+        hint.className = 'hint bad';
+        return;
+      }
+      if (t == null) delete e.end; else e.end = t;
+      save();
+      render();
+    }
+    en.addEventListener('change', function () {
+      if (!en.value) return setEnd(null);
+      var t = new Date(en.value).getTime();
+      if (!isNaN(t)) setEnd(t);
+    });
+    now.addEventListener('click', function () {
+      setEnd(e.end != null ? null : Math.max(Date.now(), e.t));
+    });
 
     var del = el('button', 'del', 'Delete this entry');
     del.type = 'button';
@@ -443,7 +554,7 @@
   /* ---------- actions ---------- */
 
   function add() {
-    var e = { id: uid(), t: Date.now(), med: null, note: '' };
+    var e = { id: uid(), t: Date.now(), meds: [], note: '' };
     entries.unshift(e);
     open = {};
     open[e.id] = true;
@@ -457,6 +568,22 @@
     var undo = el('button', null, 'Undo');
     undo.type = 'button';
     undo.addEventListener('click', function () { remove(e.id); flash.textContent = ''; });
+    flash.appendChild(undo);
+    clearTimeout(flashTimer);
+    flashTimer = setTimeout(function () { flash.textContent = ''; }, 12000);
+  }
+
+  function markOver() {
+    var e = ongoing();
+    if (!e) return;
+    e.end = Date.now();
+    save();
+    render();
+    var flash = $('flash');
+    flash.textContent = 'Lasted ' + fmtDuration(e.end - e.t) + '. ';
+    var undo = el('button', null, 'Undo');
+    undo.type = 'button';
+    undo.addEventListener('click', function () { delete e.end; save(); render(); flash.textContent = ''; });
     flash.appendChild(undo);
     clearTimeout(flashTimer);
     flashTimer = setTimeout(function () { flash.textContent = ''; }, 12000);
@@ -487,14 +614,16 @@
 
   function toCSV() {
     var q = function (v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; };
-    var rows = [['date', 'time', 'iso_timestamp', 'medication', 'note'].join(',')];
+    var rows = [['date', 'time', 'iso_timestamp', 'end_iso_timestamp', 'duration_hours', 'medication', 'note'].join(',')];
     entries.slice().reverse().forEach(function (e) {
       var d = new Date(e.t);
       rows.push([
         q(toLocalInput(e.t).slice(0, 10)),
         q(toLocalInput(e.t).slice(11)),
         q(d.toISOString()),
-        q(e.med || ''),
+        q(e.end != null ? new Date(e.end).toISOString() : ''),
+        q(e.end != null ? ((e.end - e.t) / 3600000).toFixed(1) : ''),
+        q(e.meds.join(';')),
         q(e.note || '')
       ].join(','));
     });
@@ -537,10 +666,10 @@
       var added = 0;
       incoming.forEach(function (e) {
         if (!e || typeof e.t !== 'number') return;
-        var id = e.id || uid();
-        if (seen[id]) return;
-        seen[id] = true;
-        entries.push({ id: id, t: e.t, med: e.med || null, note: e.note || '' });
+        var n = normalize(e);
+        if (seen[n.id]) return;
+        seen[n.id] = true;
+        entries.push(n);
         added++;
       });
       sort();
@@ -555,6 +684,7 @@
   /* ---------- go ---------- */
 
   $('logBtn').addEventListener('click', add);
+  $('overBtn').addEventListener('click', markOver);
 
   load();
   render();
